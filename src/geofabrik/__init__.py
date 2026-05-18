@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .client import Client
 from .errors import (
     ChecksumMismatchError,
     FormatNotAvailableError,
@@ -15,6 +16,7 @@ __version__ = "0.0.1"
 
 __all__ = [
     "ChecksumMismatchError",
+    "Client",
     "DownloadResult",
     "Format",
     "FormatNotAvailableError",

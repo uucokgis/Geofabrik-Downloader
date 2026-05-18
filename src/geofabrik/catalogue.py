@@ -12,18 +12,32 @@ from . import cache as _cache
 from .errors import IndexFetchError, RegionNotFoundError
 from .models import FORMAT_TO_INDEX_KEY, Region
 
-INDEX_URL = "https://download.geofabrik.de/index-v1-nogeom.json"
+INDEX_URL_NOGEOM = "https://download.geofabrik.de/index-v1-nogeom.json"
+INDEX_URL_GEOM = "https://download.geofabrik.de/index-v1.json"
 
 _DOWNLOAD_KEYS: frozenset[str] = frozenset(FORMAT_TO_INDEX_KEY.values())
 
 
 class Catalogue:
-    """In-process region tree backed by a locally cached copy of the Geofabrik index."""
+    """In-process region tree backed by a locally cached copy of the Geofabrik index.
 
-    def __init__(self, http: httpx.Client, cache_dir: Path, ttl_hours: float) -> None:
+    By default the geometry-free index (~500 KB) is used. Pass
+    ``include_geometry=True`` to fetch the full GeoJSON index (~50 MB) which
+    populates ``Region.geometry`` and enables spatial queries.
+    """
+
+    def __init__(
+        self,
+        http: httpx.Client,
+        cache_dir: Path,
+        ttl_hours: float,
+        include_geometry: bool = False,
+    ) -> None:
         self._http = http
-        self._cache_path = cache_dir / "index-v1-nogeom.json"
         self._ttl = ttl_hours
+        self._index_url = INDEX_URL_GEOM if include_geometry else INDEX_URL_NOGEOM
+        cache_file = "index-v1.json" if include_geometry else "index-v1-nogeom.json"
+        self._cache_path = cache_dir / cache_file
         self._index: dict[str, Region] | None = None
 
     # ------------------------------------------------------------------
@@ -76,7 +90,7 @@ class Catalogue:
 
     def _fetch(self) -> bytes:
         try:
-            response = self._http.get(INDEX_URL)
+            response = self._http.get(self._index_url)
             response.raise_for_status()
             return response.content
         except httpx.HTTPError as exc:

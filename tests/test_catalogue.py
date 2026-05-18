@@ -8,7 +8,9 @@ import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 
-from geofabrik.catalogue import INDEX_URL, Catalogue
+from geofabrik.catalogue import INDEX_URL_GEOM, INDEX_URL_NOGEOM, Catalogue
+
+INDEX_URL = INDEX_URL_NOGEOM  # default used by most tests
 from geofabrik.errors import IndexFetchError, RegionNotFoundError
 
 FIXTURE = Path(__file__).parent / "fixtures" / "index.json"
@@ -237,6 +239,28 @@ def test_index_fetch_error_on_empty_index(httpx_mock: HTTPXMock, tmp_path: Path)
     with httpx.Client() as http:
         with pytest.raises(IndexFetchError, match="no regions"):
             _make_catalogue(tmp_path, http).list_regions()
+
+
+# ---------------------------------------------------------------------------
+# include_geometry
+
+
+def test_include_geometry_fetches_geom_url(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_GEOM, content=_fixture_bytes())
+    with httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0, include_geometry=True)
+        cat.list_regions()
+    assert (tmp_path / "index-v1.json").exists()
+    assert not (tmp_path / "index-v1-nogeom.json").exists()
+
+
+def test_no_geometry_fetches_nogeom_url(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_NOGEOM, content=_fixture_bytes())
+    with httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0, include_geometry=False)
+        cat.list_regions()
+    assert (tmp_path / "index-v1-nogeom.json").exists()
+    assert not (tmp_path / "index-v1.json").exists()
 
 
 # ---------------------------------------------------------------------------
