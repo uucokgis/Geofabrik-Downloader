@@ -44,3 +44,25 @@ class ChecksumMismatchError(GeofabrikError):
         self.path = path
         self.expected = expected
         self.actual = actual
+
+
+class LayerNotFoundError(GeofabrikError):
+    """Raised when the requested shapefile layer is absent from the zip."""
+
+    def __init__(self, layer: str, available: list[str]) -> None:
+        super().__init__(
+            f"Layer {layer!r} not found in shapefile zip. "
+            f"Available: {sorted(available) if available else '(none detected)'}"
+        )
+        self.layer = layer
+        self.available = available
+
+
+class GeometryNotLoadedError(GeofabrikError):
+    """Raised when a spatial query is attempted without geometry in the index."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Spatial queries require geometry. "
+            "Initialise the client with include_geometry=True."
+        )

@@ -242,6 +242,120 @@ def test_index_fetch_error_on_empty_index(httpx_mock: HTTPXMock, tmp_path: Path)
 
 
 # ---------------------------------------------------------------------------
+# Spatial queries
+
+
+def _geom_fixture_bytes() -> bytes:
+    """Fixture index with real-ish bounding box geometries for spatial tests."""
+    import json
+
+    # Turkey bbox: roughly lon 26-45, lat 36-42
+    # Germany bbox: roughly lon 6-15, lat 47-55
+    return json.dumps({
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"id": "asia", "name": "Asia", "parent": None, "urls": {}},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[26.0, 36.0], [45.0, 36.0], [45.0, 42.0], [26.0, 42.0], [26.0, 36.0]]]
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {
+                    "id": "turkey", "name": "Turkey", "parent": "asia",
+                    "urls": {"pbf": "https://example.test/turkey.pbf"},
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[26.0, 36.0], [45.0, 36.0], [45.0, 42.0], [26.0, 42.0], [26.0, 36.0]]]
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {
+                    "id": "germany", "name": "Germany", "parent": "europe",
+                    "urls": {"pbf": "https://example.test/germany.pbf"},
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[6.0, 47.0], [15.0, 47.0], [15.0, 55.0], [6.0, 55.0], [6.0, 47.0]]]
+                },
+            },
+        ],
+    }).encode()
+
+
+def _make_geom_catalogue(tmp_path: Path, http: httpx.Client) -> Catalogue:
+    return Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0, include_geometry=True)
+
+
+def test_find_by_point_returns_matching_region(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_GEOM, content=_geom_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_geom_catalogue(tmp_path, http)
+        results = cat.find_by_point(lat=39.9, lon=32.8)  # Ankara
+    assert any(r.id == "turkey" for r in results)
+    assert not any(r.id == "germany" for r in results)
+
+
+def test_find_by_point_sorted_smallest_first(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_GEOM, content=_geom_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_geom_catalogue(tmp_path, http)
+        results = cat.find_by_point(lat=39.9, lon=32.8)
+    # turkey bbox is same size as asia in this fixture, but both should be returned
+    ids = [r.id for r in results]
+    assert "turkey" in ids
+
+
+def test_find_by_point_no_match(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_GEOM, content=_geom_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_geom_catalogue(tmp_path, http)
+        results = cat.find_by_point(lat=-33.9, lon=18.4)  # Cape Town
+    assert results == []
+
+
+def test_find_by_bbox_overlapping(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_GEOM, content=_geom_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_geom_catalogue(tmp_path, http)
+        # bbox covering central Europe — should hit Germany, not Turkey
+        results = cat.find_by_bbox(min_lon=8.0, min_lat=48.0, max_lon=14.0, max_lat=52.0)
+    assert any(r.id == "germany" for r in results)
+    assert not any(r.id == "turkey" for r in results)
+
+
+def test_find_by_bbox_no_overlap(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL_GEOM, content=_geom_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_geom_catalogue(tmp_path, http)
+        results = cat.find_by_bbox(min_lon=-80.0, min_lat=-60.0, max_lon=-70.0, max_lat=-50.0)
+    assert results == []
+
+
+def test_find_by_point_requires_geometry(tmp_path: Path) -> None:
+    # GeometryNotLoadedError is raised before any HTTP call — no mock needed
+    from geofabrik.errors import GeometryNotLoadedError
+    with httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0, include_geometry=False)
+        with pytest.raises(GeometryNotLoadedError):
+            cat.find_by_point(lat=39.9, lon=32.8)
+
+
+def test_find_by_bbox_requires_geometry(tmp_path: Path) -> None:
+    # GeometryNotLoadedError is raised before any HTTP call — no mock needed
+    from geofabrik.errors import GeometryNotLoadedError
+    with httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0, include_geometry=False)
+        with pytest.raises(GeometryNotLoadedError):
+            cat.find_by_bbox(0.0, 0.0, 1.0, 1.0)
+
+
+# ---------------------------------------------------------------------------
 # include_geometry
 
 

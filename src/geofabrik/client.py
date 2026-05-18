@@ -8,10 +8,11 @@ from typing import Callable
 import httpx
 
 from . import download as _dl
+from . import extract as _ex
 from .cache import default_cache_dir
 from .catalogue import Catalogue
 from .errors import FormatNotAvailableError
-from .models import FORMAT_TO_INDEX_KEY, DownloadResult, Format, Region
+from .models import FORMAT_TO_INDEX_KEY, DownloadResult, Format, Region, ShpLayer
 
 
 class Client:
@@ -148,6 +149,46 @@ class Client:
             overwrite=overwrite,
             progress=progress,
         )
+
+    # ── Spatial ──────────────────────────────────────────────────────────────
+
+    def find_by_point(self, lat: float, lon: float) -> list[Region]:
+        """Return regions whose bounding box contains ``(lat, lon)``, smallest first.
+
+        Requires ``include_geometry=True``.
+        """
+        return self._catalogue.find_by_point(lat, lon)
+
+    def find_by_bbox(
+        self,
+        min_lon: float,
+        min_lat: float,
+        max_lon: float,
+        max_lat: float,
+    ) -> list[Region]:
+        """Return regions whose bounding box overlaps the given bbox, smallest first.
+
+        Requires ``include_geometry=True``.
+        """
+        return self._catalogue.find_by_bbox(min_lon, min_lat, max_lon, max_lat)
+
+    # ── Shapefile extraction ──────────────────────────────────────────────────
+
+    def list_layers(self, zip_path: Path | str) -> list[ShpLayer]:
+        """Return which shapefile layers are present in a ``.shp.zip`` file."""
+        return _ex.list_layers(Path(zip_path))
+
+    def extract_layer(
+        self,
+        zip_path: Path | str,
+        layer: ShpLayer,
+        dest: Path | str = ".",
+    ) -> list[Path]:
+        """Extract *layer* from a Geofabrik ``.shp.zip`` into *dest*.
+
+        Returns the list of extracted paths (``.shp``, ``.dbf``, ``.shx``, ``.prj``).
+        """
+        return _ex.extract_layer(Path(zip_path), layer, Path(dest))
 
     # ── Internal ─────────────────────────────────────────────────────────────
 

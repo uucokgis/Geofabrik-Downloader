@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from . import cache as _cache
-from .errors import IndexFetchError, RegionNotFoundError
+from .errors import GeometryNotLoadedError, IndexFetchError, RegionNotFoundError
 from .models import FORMAT_TO_INDEX_KEY, Region
 
 INDEX_URL_NOGEOM = "https://download.geofabrik.de/index-v1-nogeom.json"
@@ -35,6 +35,7 @@ class Catalogue:
     ) -> None:
         self._http = http
         self._ttl = ttl_hours
+        self._include_geometry = include_geometry
         self._index_url = INDEX_URL_GEOM if include_geometry else INDEX_URL_NOGEOM
         cache_file = "index-v1.json" if include_geometry else "index-v1-nogeom.json"
         self._cache_path = cache_dir / cache_file
@@ -74,8 +75,68 @@ class Catalogue:
         _cache.write_bytes(self._cache_path, data)
         self._index = self._parse(data)
 
+    def find_by_point(self, lat: float, lon: float) -> list[Region]:
+        """Return all regions whose bounding box contains ``(lat, lon)``.
+
+        Results are sorted smallest-first (most specific region first).
+        Requires ``include_geometry=True``; raises
+        :exc:`~geofabrik.GeometryNotLoadedError` otherwise.
+
+        .. note::
+            This is a **bounding-box approximation** — no point-in-polygon
+            test is performed.  For exact containment use ``shapely``::
+
+                from shapely.geometry import Point, shape
+                pt = Point(lon, lat)
+                exact = [r for r in results if shape(r.geometry).contains(pt)]
+        """
+        self._require_geometry()
+        return self._spatial_filter(lambda b: b[0] <= lon <= b[2] and b[1] <= lat <= b[3])
+
+    def find_by_bbox(
+        self,
+        min_lon: float,
+        min_lat: float,
+        max_lon: float,
+        max_lat: float,
+    ) -> list[Region]:
+        """Return all regions whose bounding box overlaps with the given bbox.
+
+        Results are sorted smallest-first (most specific region first).
+        Requires ``include_geometry=True``; raises
+        :exc:`~geofabrik.GeometryNotLoadedError` otherwise.
+        """
+        self._require_geometry()
+
+        def _overlaps(b: tuple[float, float, float, float]) -> bool:
+            return not (b[2] < min_lon or b[0] > max_lon or b[3] < min_lat or b[1] > max_lat)
+
+        return self._spatial_filter(_overlaps)
+
     # ------------------------------------------------------------------
     # Internal
+
+    def _require_geometry(self) -> None:
+        if not self._include_geometry:
+            raise GeometryNotLoadedError()
+
+    def _spatial_filter(
+        self,
+        predicate: Any,
+    ) -> list[Region]:
+        """Apply *predicate(bbox)* to all regions that have geometry."""
+        hits: list[tuple[float, Region]] = []
+        for region in self._load().values():
+            if region.geometry is None:
+                continue
+            bbox = _geometry_bbox(region.geometry)
+            if bbox is None:
+                continue
+            if predicate(bbox):
+                area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+                hits.append((area, region))
+        hits.sort(key=lambda x: x[0])
+        return [r for _, r in hits]
 
     def _load(self) -> dict[str, Region]:
         if self._index is not None:
@@ -125,3 +186,29 @@ class Catalogue:
             raise IndexFetchError("Index parsed successfully but contained no regions.")
 
         return result
+
+
+# ---------------------------------------------------------------------------
+# Geometry helpers (module-level, no shapely)
+
+
+def _flatten_coords(geometry: dict[str, Any]) -> list[list[float]]:
+    gtype = geometry.get("type")
+    coords: Any = geometry.get("coordinates", [])
+    if gtype == "Polygon":
+        return [pt for ring in coords for pt in ring]
+    if gtype == "MultiPolygon":
+        return [pt for poly in coords for ring in poly for pt in ring]
+    return []
+
+
+def _geometry_bbox(
+    geometry: dict[str, Any],
+) -> tuple[float, float, float, float] | None:
+    """Return ``(min_lon, min_lat, max_lon, max_lat)`` for a GeoJSON geometry."""
+    pts = _flatten_coords(geometry)
+    if not pts:
+        return None
+    lons = [p[0] for p in pts]
+    lats = [p[1] for p in pts]
+    return min(lons), min(lats), max(lons), max(lats)

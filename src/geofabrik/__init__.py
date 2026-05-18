@@ -7,10 +7,12 @@ from .errors import (
     ChecksumMismatchError,
     FormatNotAvailableError,
     GeofabrikError,
+    GeometryNotLoadedError,
     IndexFetchError,
+    LayerNotFoundError,
     RegionNotFoundError,
 )
-from .models import DownloadResult, Format, Region
+from .models import DownloadResult, Format, Region, ShpLayer
 
 __version__ = "0.0.1"
 
@@ -21,8 +23,11 @@ __all__ = [
     "Format",
     "FormatNotAvailableError",
     "GeofabrikError",
+    "GeometryNotLoadedError",
     "IndexFetchError",
+    "LayerNotFoundError",
     "Region",
     "RegionNotFoundError",
+    "ShpLayer",
     "__version__",
 ]
