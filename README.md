@@ -47,7 +47,7 @@ with Client() as client:
 
     # Inspect a specific region
     turkey = client.get_region("turkey")
-    print(turkey.available_formats)  # frozenset({'pbf', 'shp', 'kml', 'poly'})
+    print(turkey.available_formats)  # frozenset of available format strings e.g. {'pbf', 'shp', ...}
 
     # Download with MD5 verification (default)
     result = client.download(turkey, format="pbf", dest="./data")

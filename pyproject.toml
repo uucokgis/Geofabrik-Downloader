@@ -53,9 +53,9 @@ dev = [
 geofabrik = "geofabrik.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/YOUR-GITHUB-USERNAME/geofabrik-downloader"
-Issues = "https://github.com/YOUR-GITHUB-USERNAME/geofabrik-downloader/issues"
-Source = "https://github.com/YOUR-GITHUB-USERNAME/geofabrik-downloader"
+Homepage = "https://github.com/uucokgis/Geofabrik-Downloader"
+Issues = "https://github.com/uucokgis/Geofabrik-Downloader/issues"
+Source = "https://github.com/uucokgis/Geofabrik-Downloader"
 
 [tool.hatch.version]
 path = "src/geofabrik/__init__.py"
