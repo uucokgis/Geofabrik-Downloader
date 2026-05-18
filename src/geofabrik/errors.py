@@ -1,0 +1,46 @@
+"""Exception hierarchy for the geofabrik package."""
+
+from __future__ import annotations
+
+
+class GeofabrikError(Exception):
+    """Base class for all errors raised by this package."""
+
+
+class IndexFetchError(GeofabrikError):
+    """Raised when the Geofabrik index cannot be fetched or parsed."""
+
+
+class RegionNotFoundError(GeofabrikError):
+    """Raised when a region id does not exist in the index."""
+
+    def __init__(self, region_id: str) -> None:
+        super().__init__(f"No region with id {region_id!r} in the Geofabrik index.")
+        self.region_id = region_id
+
+
+class FormatNotAvailableError(GeofabrikError):
+    """Raised when a region exists but the requested format is not offered."""
+
+    def __init__(
+        self, region_id: str, format: str, available: frozenset[str]
+    ) -> None:
+        super().__init__(
+            f"Region {region_id!r} does not offer format {format!r}. "
+            f"Available: {sorted(available)}"
+        )
+        self.region_id = region_id
+        self.format = format
+        self.available = available
+
+
+class ChecksumMismatchError(GeofabrikError):
+    """Raised when a downloaded file's MD5 does not match the published checksum."""
+
+    def __init__(self, path: str, expected: str, actual: str) -> None:
+        super().__init__(
+            f"Checksum mismatch for {path}: expected {expected}, got {actual}."
+        )
+        self.path = path
+        self.expected = expected
+        self.actual = actual
