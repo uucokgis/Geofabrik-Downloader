@@ -183,6 +183,29 @@ def _print_region_detail(state: _CliState, region: Region) -> None:
         out.print(urls)
 
 
+# ── Validation helpers ───────────────────────────────────────────────────────
+
+
+_VALID_FORMATS: frozenset[str] = frozenset({"pbf", "shp", "gpkg", "bz2", "poly", "kml"})
+_VALID_LAYERS: frozenset[str] = frozenset(LAYER_TO_PREFIX.keys())
+
+
+def _coerce_format(value: str) -> Format:
+    if value not in _VALID_FORMATS:
+        raise typer.BadParameter(
+            f"{value!r} is not a valid format. Choose from: {sorted(_VALID_FORMATS)}"
+        )
+    return value  # type: ignore[return-value]
+
+
+def _coerce_layer(value: str) -> ShpLayer:
+    if value not in _VALID_LAYERS:
+        raise typer.BadParameter(
+            f"{value!r} is not a valid layer. Choose from: {sorted(_VALID_LAYERS)}"
+        )
+    return value  # type: ignore[return-value]
+
+
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 
@@ -241,7 +264,14 @@ def info(
 def url(
     ctx: typer.Context,
     region_id: Annotated[str, typer.Argument()],
-    format: Annotated[str, typer.Option("--format", "-f", help="pbf, shp, gpkg, bz2, poly, kml.")],
+    format: Annotated[
+        str,
+        typer.Option(
+            "--format", "-f",
+            click_type=click.Choice(sorted(_VALID_FORMATS)),
+            help="File format to print the URL for.",
+        ),
+    ],
 ) -> None:
     """Print the download URL for a region/format. Pipeable into curl or wget."""
     state = _state(ctx)
@@ -264,7 +294,14 @@ def refresh(ctx: typer.Context) -> None:
 def download(
     ctx: typer.Context,
     region_id: Annotated[str, typer.Argument()],
-    format: Annotated[str, typer.Option("--format", "-f", help="pbf, shp, gpkg, bz2, poly, kml.")],
+    format: Annotated[
+        str,
+        typer.Option(
+            "--format", "-f",
+            click_type=click.Choice(sorted(_VALID_FORMATS)),
+            help="File format to download.",
+        ),
+    ],
     dest: Annotated[Path, typer.Option("--dest", "-d", help="Destination directory.")] = Path("."),
     verify: Annotated[bool, typer.Option("--verify/--no-verify", help="MD5-verify after download.")] = True,
     resume: Annotated[bool, typer.Option("--resume/--no-resume", help="Resume an interrupted download.")] = True,
@@ -371,11 +408,9 @@ def layers(
     """List shapefile layers present in a Geofabrik .shp.zip (local; no network)."""
     state = _state(ctx)
     # Layer listing doesn't need the index — skip the HTTP client.
-    from . import extract as _ex
-
     found = _ex.list_layers(zip_path)
     if state.json_output:
-        out.print_json(data=sorted(found))
+        out.print_json(data=found)  # list_layers() already returns sorted
         return
     table = Table(show_header=True, header_style="bold")
     table.add_column("layer")
@@ -400,8 +435,6 @@ def extract_layers(
 ) -> None:
     """Extract one or more shapefile layers from a Geofabrik .shp.zip."""
     state = _state(ctx)
-    from . import extract as _ex
-
     written: dict[str, list[str]] = {}
     for raw in layers_arg:
         layer = _coerce_layer(raw)
@@ -417,29 +450,6 @@ def extract_layers(
                 err.print(f"  {p}")
 
 
-# ── Validation helpers ───────────────────────────────────────────────────────
-
-
-_VALID_FORMATS: frozenset[str] = frozenset({"pbf", "shp", "gpkg", "bz2", "poly", "kml"})
-_VALID_LAYERS: frozenset[str] = frozenset(LAYER_TO_PREFIX.keys())
-
-
-def _coerce_format(value: str) -> Format:
-    if value not in _VALID_FORMATS:
-        raise typer.BadParameter(
-            f"{value!r} is not a valid format. Choose from: {sorted(_VALID_FORMATS)}"
-        )
-    return value  # type: ignore[return-value]
-
-
-def _coerce_layer(value: str) -> ShpLayer:
-    if value not in _VALID_LAYERS:
-        raise typer.BadParameter(
-            f"{value!r} is not a valid layer. Choose from: {sorted(_VALID_LAYERS)}"
-        )
-    return value  # type: ignore[return-value]
-
-
 # ── Entry point with centralised error handling ──────────────────────────────
 
 
@@ -449,6 +459,9 @@ def main() -> None:
         app(standalone_mode=False)
     except typer.Exit as exc:
         raise SystemExit(exc.exit_code) from None
+    except typer.Abort:
+        err.print("[yellow]Aborted.[/yellow]")
+        raise SystemExit(130) from None
     except click_exceptions() as exc:  # Typer's underlying click errors
         exc.show()
         raise SystemExit(exc.exit_code) from None
