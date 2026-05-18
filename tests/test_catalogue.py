@@ -1,0 +1,254 @@
+"""Unit tests for catalogue.py — all HTTP is mocked via pytest-httpx."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import httpx
+import pytest
+from pytest_httpx import HTTPXMock
+
+from geofabrik.catalogue import INDEX_URL, Catalogue
+from geofabrik.errors import IndexFetchError, RegionNotFoundError
+
+FIXTURE = Path(__file__).parent / "fixtures" / "index.json"
+
+
+def _fixture_bytes() -> bytes:
+    return FIXTURE.read_bytes()
+
+
+def _make_catalogue(tmp_path: Path, http: httpx.Client, ttl: float = 24.0) -> Catalogue:
+    return Catalogue(http=http, cache_dir=tmp_path, ttl_hours=ttl)
+
+
+# ---------------------------------------------------------------------------
+# Fetching and parsing
+
+
+def test_list_regions_fetches_index(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_catalogue(tmp_path, http)
+        regions = cat.list_regions()
+    assert len(regions) == 3  # africa, asia, europe
+
+
+def test_list_top_level_returns_continents(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        regions = _make_catalogue(tmp_path, http).list_regions()
+    ids = {r.id for r in regions}
+    assert ids == {"africa", "asia", "europe"}
+
+
+def test_list_regions_by_parent(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        regions = _make_catalogue(tmp_path, http).list_regions(parent="europe")
+    assert {r.id for r in regions} == {"germany", "france"}
+
+
+def test_list_regions_subnational(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        regions = _make_catalogue(tmp_path, http).list_regions(parent="germany")
+    assert {r.id for r in regions} == {"nordrhein-westfalen", "bayern"}
+
+
+def test_get_region_found(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        turkey = _make_catalogue(tmp_path, http).get_region("turkey")
+    assert turkey.id == "turkey"
+    assert turkey.parent == "asia"
+    assert turkey.iso3166_1_alpha2 == ("TR",)
+
+
+def test_get_region_not_found(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        with pytest.raises(RegionNotFoundError) as exc_info:
+            _make_catalogue(tmp_path, http).get_region("narnia")
+    assert exc_info.value.region_id == "narnia"
+
+
+def test_multi_iso_region(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        region = _make_catalogue(tmp_path, http).get_region("israel-and-palestine")
+    assert set(region.iso3166_1_alpha2) == {"IL", "PS"}
+
+
+def test_subnational_iso3166_2(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        region = _make_catalogue(tmp_path, http).get_region("nordrhein-westfalen")
+    assert region.iso3166_2 == ("DE-NW",)
+
+
+# ---------------------------------------------------------------------------
+# Search
+
+
+def test_search_case_insensitive(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_catalogue(tmp_path, http)
+        # Matches on id ("germany") and name ("Germany") — sub-regions don't contain "germany"
+        assert {r.id for r in cat.search_regions("GERMANY")} == {"germany"}
+
+
+def test_search_by_name_substring(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        results = _make_catalogue(tmp_path, http).search_regions("tur")
+    assert any(r.id == "turkey" for r in results)
+
+
+def test_search_no_match(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        assert _make_catalogue(tmp_path, http).search_regions("zzznomatch") == []
+
+
+# ---------------------------------------------------------------------------
+# children_of
+
+
+def test_children_of(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        children = _make_catalogue(tmp_path, http).children_of("germany")
+    assert {r.id for r in children} == {"nordrhein-westfalen", "bayern"}
+
+
+def test_children_of_unknown_raises(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        with pytest.raises(RegionNotFoundError):
+            _make_catalogue(tmp_path, http).children_of("atlantis")
+
+
+def test_children_of_leaf_is_empty(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        assert _make_catalogue(tmp_path, http).children_of("turkey") == []
+
+
+# ---------------------------------------------------------------------------
+# Caching behaviour
+
+
+def test_index_cached_after_first_load(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        cat = _make_catalogue(tmp_path, http)
+        cat.list_regions()
+        cat.list_regions()  # should NOT make a second HTTP request
+    # pytest-httpx raises if unexpected requests are made — silence means success
+
+
+def test_uses_disk_cache_when_fresh(tmp_path: Path) -> None:
+    # Pre-seed cache; no HTTP mock registered → any request would raise
+    (tmp_path / "index-v1-nogeom.json").write_bytes(_fixture_bytes())
+    with httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0)
+        regions = cat.list_regions()
+    assert len(regions) == 3
+
+
+def test_refresh_bypasses_cache(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    # Both requests go through HTTP (ttl=0 → always stale).
+    # First response has 1 region; after refresh it has the full fixture.
+    minimal = b"""{
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {"id": "europe", "name": "Europe", "parent": null, "urls": {}},
+            "geometry": null
+        }]
+    }"""
+    httpx_mock.add_response(url=INDEX_URL, content=minimal)
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=0.0)
+        assert len(cat.list_regions()) == 1
+        cat.refresh()
+        assert len(cat.list_regions()) == 3
+
+
+# ---------------------------------------------------------------------------
+# URL filtering
+
+
+def test_internal_urls_stripped(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    payload = b"""{
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {
+                "id": "turkey", "name": "Turkey", "parent": "asia",
+                "urls": {
+                    "pbf": "https://example.test/turkey.pbf",
+                    "pbf-internal": "https://internal.test/turkey.pbf",
+                    "history": "https://internal.test/turkey-history.pbf",
+                    "taginfo": "https://taginfo.example.test/turkey"
+                }
+            },
+            "geometry": null
+        }]
+    }"""
+    httpx_mock.add_response(url=INDEX_URL, content=payload)
+    with httpx.Client() as http:
+        turkey = _make_catalogue(tmp_path, http).get_region("turkey")
+    assert set(turkey.urls.keys()) == {"pbf"}
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+
+
+def test_index_fetch_error_on_http_failure(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, status_code=503)
+    with httpx.Client() as http:
+        with pytest.raises(IndexFetchError):
+            _make_catalogue(tmp_path, http).list_regions()
+
+
+def test_index_fetch_error_on_bad_json(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=b"not json at all")
+    with httpx.Client() as http:
+        with pytest.raises(IndexFetchError):
+            _make_catalogue(tmp_path, http).list_regions()
+
+
+def test_index_fetch_error_on_missing_features_key(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=b'{"type": "FeatureCollection"}')
+    with httpx.Client() as http:
+        with pytest.raises(IndexFetchError):
+            _make_catalogue(tmp_path, http).list_regions()
+
+
+def test_index_fetch_error_on_empty_index(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(
+        url=INDEX_URL, content=b'{"type":"FeatureCollection","features":[]}'
+    )
+    with httpx.Client() as http:
+        with pytest.raises(IndexFetchError, match="no regions"):
+            _make_catalogue(tmp_path, http).list_regions()
+
+
+# ---------------------------------------------------------------------------
+# Network integration (skipped by default)
+
+
+@pytest.mark.network
+def test_real_index_has_turkey() -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp, httpx.Client() as http:
+        cat = Catalogue(http=http, cache_dir=Path(tmp), ttl_hours=0)
+        turkey = cat.get_region("turkey")
+    assert turkey.parent == "asia"
+    assert "pbf" in turkey.available_formats

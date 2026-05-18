@@ -1,0 +1,159 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "africa",
+        "parent": null,
+        "name": "Africa",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/africa-latest.osm.pbf",
+          "bz2": "https://download.geofabrik.de/africa-latest.osm.bz2",
+          "shp": "https://download.geofabrik.de/africa-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/africa.poly",
+          "kml": "https://download.geofabrik.de/africa.kml"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "asia",
+        "parent": null,
+        "name": "Asia",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/asia-latest.osm.pbf",
+          "bz2": "https://download.geofabrik.de/asia-latest.osm.bz2",
+          "poly": "https://download.geofabrik.de/asia.poly",
+          "kml": "https://download.geofabrik.de/asia.kml"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "europe",
+        "parent": null,
+        "name": "Europe",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/europe-latest.osm.pbf",
+          "bz2": "https://download.geofabrik.de/europe-latest.osm.bz2",
+          "shp": "https://download.geofabrik.de/europe-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/europe.poly",
+          "kml": "https://download.geofabrik.de/europe.kml"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "germany",
+        "parent": "europe",
+        "name": "Germany",
+        "iso3166-1:alpha2": ["DE"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/europe/germany-latest.osm.pbf",
+          "bz2": "https://download.geofabrik.de/europe/germany-latest.osm.bz2",
+          "shp": "https://download.geofabrik.de/europe/germany-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/europe/germany.poly",
+          "kml": "https://download.geofabrik.de/europe/germany.kml"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "france",
+        "parent": "europe",
+        "name": "France",
+        "iso3166-1:alpha2": ["FR"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/europe/france-latest.osm.pbf",
+          "shp": "https://download.geofabrik.de/europe/france-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/europe/france.poly"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "turkey",
+        "parent": "asia",
+        "name": "Turkey",
+        "iso3166-1:alpha2": ["TR"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/asia/turkey-latest.osm.pbf",
+          "bz2": "https://download.geofabrik.de/asia/turkey-latest.osm.bz2",
+          "shp": "https://download.geofabrik.de/asia/turkey-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/asia/turkey.poly",
+          "kml": "https://download.geofabrik.de/asia/turkey.kml"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "israel-and-palestine",
+        "parent": "asia",
+        "name": "Israel and Palestine",
+        "iso3166-1:alpha2": ["IL", "PS"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf",
+          "poly": "https://download.geofabrik.de/asia/israel-and-palestine.poly"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "nordrhein-westfalen",
+        "parent": "germany",
+        "name": "Nordrhein-Westfalen",
+        "iso3166-2": ["DE-NW"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf",
+          "shp": "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/europe/germany/nordrhein-westfalen.poly"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "bayern",
+        "parent": "germany",
+        "name": "Bayern",
+        "iso3166-2": ["DE-BY"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf",
+          "shp": "https://download.geofabrik.de/europe/germany/bayern-latest-free.shp.zip",
+          "poly": "https://download.geofabrik.de/europe/germany/bayern.poly"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "kenya",
+        "parent": "africa",
+        "name": "Kenya",
+        "iso3166-1:alpha2": ["KE"],
+        "urls": {
+          "pbf": "https://download.geofabrik.de/africa/kenya-latest.osm.pbf",
+          "poly": "https://download.geofabrik.de/africa/kenya.poly"
+        }
+      },
+      "geometry": null
+    }
+  ]
+}
