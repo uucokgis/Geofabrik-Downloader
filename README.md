@@ -16,23 +16,19 @@ Geofabrik publishes daily OpenStreetMap extracts for every continent, country, a
 ## Features
 
 - Region discovery via Geofabrik's structured [`index-v1.json`](https://download.geofabrik.de/index-v1.json) — no HTML scraping
+- Browse, search, and walk the region hierarchy (`list_regions`, `search_regions`, `children_of`, `get_region`)
+- Locally cached index with a configurable TTL and an explicit `refresh_index()`
 - Download `.osm.pbf`, `.shp.zip`, `.gpkg.zip`, `.osm.bz2`, `.poly`, `.kml`
 - MD5 checksum verification using the published `.md5` sidecars
-- Resumable downloads via HTTP `Range` requests
-- Local cache for the index with a configurable TTL
-- Optional CLI (`pip install "geofabrik-downloader[cli]"`)
+- Resumable downloads via HTTP `Range` requests, with a progress callback hook
+- Optional spatial lookup: `find_by_point` / `find_by_bbox` when the geometry-bearing index is loaded
+- Selective shapefile-layer extraction from `.shp.zip` (`list_layers`, `extract_layer`) — no shapely/geopandas required
 - Type hints throughout, MIT-licensed, single runtime dependency (`httpx`)
 
 ## Installation
 
 ```bash
 pip install geofabrik-downloader
-```
-
-With the CLI extras:
-
-```bash
-pip install "geofabrik-downloader[cli]"
 ```
 
 ## Quick start
@@ -47,20 +43,47 @@ with Client() as client:
 
     # Inspect a specific region
     turkey = client.get_region("turkey")
-    print(turkey.available_formats)  # frozenset of available format strings e.g. {'pbf', 'shp', ...}
+    print(turkey.available_formats)  # e.g. frozenset({'pbf', 'shp', 'poly', 'kml'})
 
     # Download with MD5 verification (default)
     result = client.download(turkey, format="pbf", dest="./data")
     print(f"Saved {result.bytes_written} bytes to {result.path}")
 ```
 
+### Searching and walking the hierarchy
+
+```python
+with Client() as client:
+    matches = client.search_regions("bavaria")
+    for region in client.children_of("germany"):
+        print(region.id)
+```
+
+### Spatial lookup
+
+Spatial helpers require the full index (≈50 MB) to be loaded:
+
+```python
+with Client(include_geometry=True) as client:
+    # Smallest region containing the point first
+    hits = client.find_by_point(lat=41.0, lon=29.0)
+    print(hits[0].id)
+```
+
+### Extracting a single shapefile layer
+
+```python
+with Client() as client:
+    zip_path = client.download("monaco", format="shp", dest="./data").path
+    print(client.list_layers(zip_path))               # which layers are present
+    client.extract_layer(zip_path, "roads", "./out")  # only the roads layer
+```
+
 ## CLI
 
-```bash
-geofabrik list --parent europe
-geofabrik info germany
-geofabrik download turkey --format pbf --dest ./data
-```
+A `geofabrik` console-script entry point is declared in `pyproject.toml` but the CLI
+module is not implemented yet. The `cli` extras (`typer`, `rich`) are reserved for it.
+Until then, use the Python API above. Tracking the design in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## What this package does *not* do
 
