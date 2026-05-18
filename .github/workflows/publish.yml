@@ -1,0 +1,53 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"          # tetikleyici: v0.1.0, v0.1.1, v1.0.0 …
+
+jobs:
+  # ── 1. Testleri çalıştır ────────────────────────────────────────────────────
+  test:
+    name: "Test before publish"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -m "not network" -v
+
+  # ── 2. Build ────────────────────────────────────────────────────────────────
+  build:
+    name: "Build wheel + sdist"
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install hatchling
+      - run: python -m hatchling build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── 3. PyPI'ye yükle (OIDC Trusted Publishing) ─────────────────────────────
+  publish:
+    name: "Publish to PyPI"
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi          # PyPI trusted publisher environment adı
+    permissions:
+      id-token: write           # OIDC token — API key gerekmez
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
