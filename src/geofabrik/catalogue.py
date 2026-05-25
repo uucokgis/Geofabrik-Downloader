@@ -69,6 +69,25 @@ class Catalogue:
         self.get_region(region_id)  # validate parent exists
         return [r for r in self._load().values() if r.parent == region_id]
 
+    def composite_parts(self, region_id: str, format: str) -> list[Region]:
+        """Return the child regions that *together* cover *format* for *region_id*.
+
+        Geofabrik splits a few oversized extracts (e.g. ``us/california`` → ``norcal`` +
+        ``socal``) so the parent only publishes ``pbf`` while the children carry ``shp``.
+        This returns those children if **all** of them offer *format* and the parent
+        does not. Returns ``[]`` for regions that already offer *format* themselves, or
+        whose children don't unanimously cover the gap.
+        """
+        parent = self.get_region(region_id)
+        if format in {f for f in parent.available_formats}:
+            return []
+        kids = [r for r in self._load().values() if r.parent == region_id]
+        if not kids:
+            return []
+        if not all(format in k.available_formats for k in kids):
+            return []
+        return kids
+
     def refresh(self) -> None:
         """Force a re-fetch of the index regardless of cache freshness."""
         data = self._fetch()

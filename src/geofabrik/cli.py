@@ -17,6 +17,7 @@ from rich.progress import (
     BarColumn,
     DownloadColumn,
     Progress,
+    TaskID,
     TextColumn,
     TimeRemainingColumn,
     TransferSpeedColumn,
@@ -33,7 +34,7 @@ from .errors import (
     LayerNotFoundError,
     RegionNotFoundError,
 )
-from .models import LAYER_TO_PREFIX, Format, Region, ShpLayer
+from .models import LAYER_TO_PREFIX, DownloadResult, Format, Region, ShpLayer
 
 # Exit codes — stable contract for scripts.
 EXIT_GENERIC = 1
@@ -306,65 +307,135 @@ def download(
     verify: Annotated[bool, typer.Option("--verify/--no-verify", help="MD5-verify after download.")] = True,
     resume: Annotated[bool, typer.Option("--resume/--no-resume", help="Resume an interrupted download.")] = True,
     overwrite: Annotated[bool, typer.Option("--overwrite", help="Re-download even if the file exists.")] = False,
+    parts: Annotated[
+        bool,
+        typer.Option(
+            "--parts",
+            help="Fetch every part of a split region (e.g. us/california shp → norcal + socal).",
+        ),
+    ] = False,
 ) -> None:
-    """Download a region in the chosen format."""
+    """Download a region in the chosen format.
+
+    Pass ``--parts`` for regions Geofabrik splits across children (notably
+    ``us/california`` whose ``shp`` lives on ``norcal`` + ``socal``).
+    """
     state = _state(ctx)
     fmt = _coerce_format(format)
     show_progress = not state.quiet and out.is_terminal and not state.json_output
 
     with state.open_client() as client:
-        if show_progress:
-            progress = Progress(
-                TextColumn("[bold]{task.description}"),
-                BarColumn(),
-                DownloadColumn(),
-                TransferSpeedColumn(),
-                TimeRemainingColumn(),
-                console=err,
-            )
-            with progress:
-                task_id = progress.add_task(f"{region_id} ({fmt})", total=None)
-
-                def on_chunk(done: int, total: int | None) -> None:
-                    if total is not None:
-                        progress.update(task_id, total=total)
-                    progress.update(task_id, completed=done)
-
-                result = client.download(
-                    region_id,
-                    format=fmt,
-                    dest=dest,
-                    verify=verify,
-                    resume=resume,
-                    overwrite=overwrite,
-                    progress=on_chunk,
-                )
+        if parts:
+            results = _download_parts(client, region_id, fmt, dest, verify, resume, overwrite, show_progress)
         else:
-            result = client.download(
-                region_id,
-                format=fmt,
-                dest=dest,
-                verify=verify,
-                resume=resume,
-                overwrite=overwrite,
-            )
+            results = [_download_single(client, region_id, fmt, dest, verify, resume, overwrite, show_progress)]
 
     if state.json_output:
         out.print_json(
-            data={
-                "path": result.path,
-                "bytes_written": result.bytes_written,
-                "resumed": result.resumed,
-                "verified": result.verified,
-                "url": result.url,
+            data=[
+                {
+                    "path": r.path,
+                    "bytes_written": r.bytes_written,
+                    "resumed": r.resumed,
+                    "verified": r.verified,
+                    "url": r.url,
+                }
+                for r in results
+            ]
+            if parts
+            else {
+                "path": results[0].path,
+                "bytes_written": results[0].bytes_written,
+                "resumed": results[0].resumed,
+                "verified": results[0].verified,
+                "url": results[0].url,
             }
         )
     elif not state.quiet:
-        verified = "[green]verified[/green]" if result.verified else "[yellow]unverified[/yellow]"
-        resumed = " (resumed)" if result.resumed else ""
-        err.print(
-            f"Saved [bold]{result.bytes_written:,}[/bold] bytes to "
-            f"[cyan]{result.path}[/cyan] — {verified}{resumed}"
+        for r in results:
+            verified = "[green]verified[/green]" if r.verified else "[yellow]unverified[/yellow]"
+            resumed = " (resumed)" if r.resumed else ""
+            err.print(
+                f"Saved [bold]{r.bytes_written:,}[/bold] bytes to "
+                f"[cyan]{r.path}[/cyan] — {verified}{resumed}"
+            )
+
+
+def _download_single(
+    client: Client,
+    region_id: str,
+    fmt: Format,
+    dest: Path,
+    verify: bool,
+    resume: bool,
+    overwrite: bool,
+    show_progress: bool,
+) -> DownloadResult:
+    if show_progress:
+        progress = Progress(
+            TextColumn("[bold]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=err,
+        )
+        with progress:
+            task_id = progress.add_task(f"{region_id} ({fmt})", total=None)
+
+            def on_chunk(done: int, total: int | None) -> None:
+                if total is not None:
+                    progress.update(task_id, total=total)
+                progress.update(task_id, completed=done)
+
+            return client.download(
+                region_id, format=fmt, dest=dest,
+                verify=verify, resume=resume, overwrite=overwrite, progress=on_chunk,
+            )
+    return client.download(
+        region_id, format=fmt, dest=dest,
+        verify=verify, resume=resume, overwrite=overwrite,
+    )
+
+
+def _download_parts(
+    client: Client,
+    region_id: str,
+    fmt: Format,
+    dest: Path,
+    verify: bool,
+    resume: bool,
+    overwrite: bool,
+    show_progress: bool,
+) -> list[DownloadResult]:
+    if not show_progress:
+        return client.download_parts(
+            region_id, format=fmt, dest=dest,
+            verify=verify, resume=resume, overwrite=overwrite,
+        )
+
+    progress = Progress(
+        TextColumn("[bold]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+        console=err,
+    )
+    tasks: dict[str, TaskID] = {}
+    with progress:
+        def on_chunk(pid: str, done: int, total: int | None) -> None:
+            tid = tasks.get(pid)
+            if tid is None:
+                tid = progress.add_task(f"{pid} ({fmt})", total=total)
+                tasks[pid] = tid
+            elif total is not None:
+                progress.update(tid, total=total)
+            progress.update(tid, completed=done)
+
+        return client.download_parts(
+            region_id, format=fmt, dest=dest,
+            verify=verify, resume=resume, overwrite=overwrite, progress=on_chunk,
         )
 
 

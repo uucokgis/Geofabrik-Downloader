@@ -114,8 +114,18 @@ class Client:
         r = self._resolve(region)
         key = FORMAT_TO_INDEX_KEY[format]
         if key not in r.urls:
-            raise FormatNotAvailableError(r.id, format, r.available_formats)
+            parts = tuple(p.id for p in self._catalogue.composite_parts(r.id, format))
+            raise FormatNotAvailableError(r.id, format, r.available_formats, parts)
         return r.urls[key]
+
+    def composite_parts(self, region: Region | str, format: Format) -> list[Region]:
+        """Return child regions that together cover *format* for a split parent region.
+
+        Returns ``[]`` when *region* itself offers *format*, or when its children do
+        not unanimously cover the gap. See :meth:`download_parts` to fetch them all.
+        """
+        r = self._resolve(region)
+        return self._catalogue.composite_parts(r.id, format)
 
     def download(
         self,
@@ -149,6 +159,57 @@ class Client:
             overwrite=overwrite,
             progress=progress,
         )
+
+    def download_parts(
+        self,
+        region: Region | str,
+        format: Format,
+        dest: Path | str = ".",
+        verify: bool = True,
+        resume: bool = True,
+        overwrite: bool = False,
+        progress: Callable[[str, int, int | None], None] | None = None,
+    ) -> list[DownloadResult]:
+        """Download every part of a (potentially split) region in *format*.
+
+        Behaves like :meth:`download` for regions that publish *format* directly,
+        returning a single-element list. For split regions such as ``us/california``
+        whose ``shp`` lives on ``norcal`` + ``socal``, downloads each child and
+        returns one ``DownloadResult`` per part.
+
+        ``progress`` (if given) is called as ``(region_id, downloaded, total)`` so a
+        single bar/log can attribute bytes to the correct part.
+        """
+        r = self._resolve(region)
+        if format in r.available_formats:
+            targets: list[Region] = [r]
+        else:
+            targets = self._catalogue.composite_parts(r.id, format)
+            if not targets:
+                raise FormatNotAvailableError(r.id, format, r.available_formats)
+
+        results: list[DownloadResult] = []
+        for part in targets:
+            part_cb: Callable[[int, int | None], None] | None
+            if progress is not None:
+                pid = part.id
+
+                def part_cb(done: int, total: int | None, _pid: str = pid) -> None:
+                    progress(_pid, done, total)
+            else:
+                part_cb = None
+            results.append(
+                self.download(
+                    part,
+                    format=format,
+                    dest=dest,
+                    verify=verify,
+                    resume=resume,
+                    overwrite=overwrite,
+                    progress=part_cb,
+                )
+            )
+        return results
 
     # ── Spatial ──────────────────────────────────────────────────────────────
 

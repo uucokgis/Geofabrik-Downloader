@@ -33,7 +33,7 @@ def test_list_regions_fetches_index(httpx_mock: HTTPXMock, tmp_path: Path) -> No
     with httpx.Client() as http:
         cat = _make_catalogue(tmp_path, http)
         regions = cat.list_regions()
-    assert len(regions) == 3  # africa, asia, europe
+    assert len(regions) == 4  # africa, asia, europe, north-america
 
 
 def test_list_top_level_returns_continents(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
@@ -41,7 +41,7 @@ def test_list_top_level_returns_continents(httpx_mock: HTTPXMock, tmp_path: Path
     with httpx.Client() as http:
         regions = _make_catalogue(tmp_path, http).list_regions()
     ids = {r.id for r in regions}
-    assert ids == {"africa", "asia", "europe"}
+    assert ids == {"africa", "asia", "europe", "north-america"}
 
 
 def test_list_regions_by_parent(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
@@ -139,6 +139,44 @@ def test_children_of_leaf_is_empty(httpx_mock: HTTPXMock, tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
+# composite_parts (split regions like us/california)
+
+
+def test_composite_parts_returns_split_children(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        parts = _make_catalogue(tmp_path, http).composite_parts("us/california", "shp")
+    assert {p.id for p in parts} == {"norcal", "socal"}
+
+
+def test_composite_parts_empty_when_parent_offers_format(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        # Parent already publishes pbf — no composite needed.
+        assert _make_catalogue(tmp_path, http).composite_parts("us/california", "pbf") == []
+
+
+def test_composite_parts_empty_when_children_dont_cover(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        # us/california children don't all publish gpkg.
+        assert _make_catalogue(tmp_path, http).composite_parts("us/california", "gpkg") == []
+
+
+def test_composite_parts_empty_for_leaf(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        assert _make_catalogue(tmp_path, http).composite_parts("turkey", "gpkg") == []
+
+
+def test_composite_parts_unknown_region_raises(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
+    httpx_mock.add_response(url=INDEX_URL, content=_fixture_bytes())
+    with httpx.Client() as http:
+        with pytest.raises(RegionNotFoundError):
+            _make_catalogue(tmp_path, http).composite_parts("atlantis", "shp")
+
+
+# ---------------------------------------------------------------------------
 # Caching behaviour
 
 
@@ -157,7 +195,7 @@ def test_uses_disk_cache_when_fresh(tmp_path: Path) -> None:
     with httpx.Client() as http:
         cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=24.0)
         regions = cat.list_regions()
-    assert len(regions) == 3
+    assert len(regions) == 4
 
 
 def test_refresh_bypasses_cache(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
@@ -177,7 +215,7 @@ def test_refresh_bypasses_cache(httpx_mock: HTTPXMock, tmp_path: Path) -> None:
         cat = Catalogue(http=http, cache_dir=tmp_path, ttl_hours=0.0)
         assert len(cat.list_regions()) == 1
         cat.refresh()
-        assert len(cat.list_regions()) == 3
+        assert len(cat.list_regions()) == 4
 
 
 # ---------------------------------------------------------------------------

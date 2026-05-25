@@ -23,15 +23,26 @@ class FormatNotAvailableError(GeofabrikError):
     """Raised when a region exists but the requested format is not offered."""
 
     def __init__(
-        self, region_id: str, format: str, available: frozenset[str]
+        self,
+        region_id: str,
+        format: str,
+        available: frozenset[str],
+        parts: tuple[str, ...] = (),
     ) -> None:
-        super().__init__(
+        msg = (
             f"Region {region_id!r} does not offer format {format!r}. "
             f"Available: {sorted(available)}"
         )
+        if parts:
+            msg += (
+                f". Geofabrik splits this region — children {list(parts)} each offer "
+                f"{format!r}. Use download_parts(...) or pass --parts on the CLI."
+            )
+        super().__init__(msg)
         self.region_id = region_id
         self.format = format
         self.available = available
+        self.parts = parts
 
 
 class ChecksumMismatchError(GeofabrikError):

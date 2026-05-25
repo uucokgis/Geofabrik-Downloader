@@ -30,6 +30,7 @@ Geofabrik publishes daily OSM extracts for every continent, country, and many su
 - **Resumable downloads** — HTTP `Range` requests with a progress-callback hook.
 - **Spatial lookup** — optional `find_by_point` / `find_by_bbox` when the geometry-bearing index is loaded.
 - **Shapefile layer extraction** — `list_layers` and `extract_layer` pull a single layer out of `.shp.zip` without shapely or geopandas.
+- **Split-region handling** — `composite_parts` / `download_parts` (CLI: `--parts`) transparently fetch every child file when Geofabrik splits a region across siblings (e.g. `us/california` → `norcal` + `socal` for `shp`).
 - **Full CLI** — `geofabrik list | search | children | info | url | download | find-point | find-bbox | layers | extract | refresh`, with Rich progress bars and a `--json` mode for scripting.
 - **Stable script-friendly exit codes** — distinct codes for region-not-found, format-unavailable, checksum-mismatch, etc.
 - **`py.typed`**, mypy-strict, no `Any` in the public API.
@@ -93,6 +94,32 @@ with Client(include_geometry=True) as client:
     hits = client.find_by_point(lat=41.0, lon=29.0)   # smallest containing region first
     print(hits[0].id)
 ```
+
+### Split regions (e.g. California)
+
+A handful of oversized regions are published only as **multiple child files** rather than a single download. The clearest example is `us/california`: the parent has `pbf` but its `shp` lives on two children, `norcal` and `socal`. To handle this transparently:
+
+```python
+with Client() as client:
+    # Discover the parts first (returns [] for regions that aren't split):
+    parts = client.composite_parts("us/california", "shp")
+    print([r.id for r in parts])   # ['norcal', 'socal']
+
+    # Or just download them all — also works for un-split regions
+    # (returns a single-element list in that case):
+    for result in client.download_parts("us/california", "shp", dest="./data"):
+        print(result.path)
+```
+
+The CLI exposes the same via `--parts`:
+
+```bash
+geofabrik download us/california --format shp --parts -d ./data
+```
+
+If you call `download` (without `--parts`) on a split region/format combo, the resulting `FormatNotAvailableError` names the parts in its message so the next step is obvious.
+
+> **Merging the two shapefiles** is out of scope for this package (which deliberately doesn't depend on `geopandas`/`shapely`). The shortest recipe is `gpd.GeoDataFrame(pd.concat([gpd.read_file(p) for p in paths]))` filtered to one layer, but a non-Python tool such as `ogr2ogr -update -append california.shp norcal_buildings.shp` works just as well.
 
 ### Extracting a single shapefile layer
 

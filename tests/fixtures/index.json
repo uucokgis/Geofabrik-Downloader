@@ -154,6 +154,56 @@
         }
       },
       "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "north-america",
+        "parent": null,
+        "name": "North America",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/north-america-latest.osm.pbf"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "us/california",
+        "parent": "north-america",
+        "name": "California",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/north-america/us/california-latest.osm.pbf"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "norcal",
+        "parent": "us/california",
+        "name": "Northern California",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/north-america/us/california/norcal-latest.osm.pbf",
+          "shp": "https://download.geofabrik.de/north-america/us/california/norcal-latest-free.shp.zip"
+        }
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "socal",
+        "parent": "us/california",
+        "name": "Southern California",
+        "urls": {
+          "pbf": "https://download.geofabrik.de/north-america/us/california/socal-latest.osm.pbf",
+          "shp": "https://download.geofabrik.de/north-america/us/california/socal-latest-free.shp.zip"
+        }
+      },
+      "geometry": null
     }
   ]
 }
