@@ -1,4 +1,4 @@
-# geofabrik-downloader
+# Geofabrik Downloader
 
 [![CI](https://github.com/uucokgis/Geofabrik-Downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/uucokgis/Geofabrik-Downloader/actions)
 [![PyPI](https://img.shields.io/pypi/v/geofabrik-downloader.svg)](https://pypi.org/project/geofabrik-downloader/)
